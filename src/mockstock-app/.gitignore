@@ -167,3 +167,5 @@ cdk.out
 .chainlit
 
 file::memory:
+
+mockstock-app_env

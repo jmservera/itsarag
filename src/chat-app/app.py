@@ -10,6 +10,7 @@ from typing import cast
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../lib')))
 
 from assistant import Assistant
+from multiagent_assistant import MultiAgentAssistant
 
 @cl.set_starters
 async def set_starters():
@@ -34,18 +35,26 @@ async def set_starters():
 
 @cl.on_chat_start
 async def on_chat_start():
-    cl.user_session.set("assistant", Assistant())
+    cl.user_session.set("assistant", MultiAgentAssistant())
+
+from langchain_core.messages import HumanMessage
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    assistant = cast(Assistant, cl.user_session.get("assistant"))  # type: Assistant
-
+    assistant = cast(MultiAgentAssistant, cl.user_session.get("assistant"))  # type: Assistant
+    config = {"configurable": {"thread_id": cl.context.session.id}}
     msg = cl.Message(content="")
 
-    async for chunk in assistant.astream(
-        message.content,
-        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
-    ):
-        await msg.stream_token(chunk)
+    async for chunk, metadata in assistant.astream(
+        {"messages": [message.content]},
+        stream_mode="messages",
+        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()],**config)):
+
+        if (
+            chunk.content
+            and not isinstance(chunk, HumanMessage)
+            and metadata["langgraph_node"] != "start"
+        ):
+            await msg.stream_token(str(chunk.content))
 
     await msg.send()
